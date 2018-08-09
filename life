@@ -1,0 +1,64 @@
+#!/usr/bin/python3
+
+from lifelib import Timeline, TimelineError
+
+import argparse
+import sys
+
+
+def parse_args():
+  parser = argparse.ArgumentParser()
+  group = parser.add_mutually_exclusive_group()
+  group.add_argument("--start",
+                     "-s",
+                     metavar="ACTIVITY",
+                     help="Start a new activity.")
+  group.add_argument("--done",
+                     "-d",
+                     action="store_true",
+                     help="Finish the current activity.")
+  group.add_argument("--new",
+                     "-n",
+                     metavar="USER",
+                     help="Create a new user & timeline.")
+  group.add_argument("--default_user",
+                     "-u",
+                     action="store_true",
+                     help="Check who the default user is.")
+  group.add_argument("--set_default_user",
+                     metavar="USER",
+                     help="Change the default user.")
+  return parser.parse_args(sys.argv[1:])
+
+
+def main():
+  args = parse_args()
+
+  timeline = Timeline()
+
+  try:
+    if args.start:
+      timeline.start(args.start)
+    elif args.done:
+      time_phrase, activity = timeline.done()
+      print(f"You spent {time_phrase} on '{activity}'")
+    elif args.new:
+      timeline_path = timeline.new_timeline(args.new)
+      print(f"Timeline created for {args.new} at '{timeline_path}'")
+    elif args.default_user:
+      print(Timeline.default_user())
+    elif args.set_default_user:
+      old_default_user = Timeline.default_user()
+      Timeline.set_default_user(args.set_default_user)
+      print(f"Changed default user from '{old_default_user}' to "
+            f"'{args.set_default_user}'.")
+    else:
+      timeline.print_status()
+  except TimelineError as error:
+    print(f"Error: {error}")
+
+
+if __name__ == "__main__":
+  print()
+  main()
+  print()

@@ -1,0 +1,71 @@
+{
+  // the date the ongoing activity was started
+  //    OR
+  // the date the most recent activity ended
+  last_date: 09/08/2018
+
+  // timeline
+  timeline: {
+    // days map to activities
+    09/08/2018: [
+      // activities are composed of an
+      //    - id
+      //    - start/end
+      //    - timesmoods
+      //    - notes
+
+      {
+        activity_id: 1j8c5478h35498jd438n7h
+        start: "2018-08-09 03:29:49.928401"
+        end: "2018-08-09 04:32:23.659376"
+        moods: ["Productive", "Excited"]
+      },
+
+      {
+        activity_id: 1j8c5478h35498jd438n7h
+        start: "2018-08-09 05:41:13.819976"
+      }
+    ]
+  }
+
+  // categories of activities
+  activities: {
+    work: {
+      mitsubishi: {
+        pipes: null
+        dashboard: null
+      }
+    }
+    leisure: {
+      trip: null
+    }
+    school: {
+      caltech: {
+        lectures: {
+          "CS 115": null
+          "CS 121": null
+          "Ec 121": null
+          "Ma 116": null
+        }
+        homework: {
+          "CS 115": null
+          "CS 121": null
+          "Ec 121": null
+          "Ma 116": null
+        }
+      }
+    }
+    personal: {
+      projects: {
+        life.py: null
+      }
+    }
+    food: {
+      eating: {
+        out: null
+        home: null
+      }
+      cooking: null
+    }
+  }
+}

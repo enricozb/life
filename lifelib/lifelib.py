@@ -1,22 +1,26 @@
+from lifelib import activity_utils
+
 import hjson
 import os
 import pkg_resources
+import uuid
 
 from datetime import datetime
+from typing import Dict, Optional, Tuple
 
 
 time_format = "%Y-%m-%d_%H:%M:%S"
 
 
-def utc_time():
+def utc_time() -> str:
   return datetime.utcnow().strftime(time_format)
 
 
-def utc_date():
+def utc_date() -> str:
   return datetime.utcnow().date().isoformat()
 
 
-def elapsed_time_phrase(time):
+def elapsed_time_phrase(time: str) -> str:
   then = datetime.strptime(time, time_format)
   now = datetime.strptime(utc_time(), time_format)
   diff = now - then
@@ -37,18 +41,16 @@ class Timeline:
   """
   Handles state of current & other timelines.
   """
+  current_state: Dict[str, str] = {}
 
-  def __init__(self, username=None):
+  def __init__(self, username: str = None) -> None:
     if username is None:
       username = Timeline.default_user()
 
     self.username = username
     self.timeline = Timeline.load_timeline(self.username)
 
-  def __del__(self):
-    self.save_timeline_to_file()
-
-  def start(self, activity):
+  def start(self, activity_name: str) -> None:
     # end any ongoing activity
     if self.current_activity() is not None:
       self.done()
@@ -61,13 +63,15 @@ class Timeline:
 
     # add activity to today's entry
     activity = {
-        "id": activity,
+        "id": self.get_activity_id(activity_name),
+        "name": activity_name,
         "start": utc_time()
     }
+
     self.timeline["timeline"][today].append(activity)
     self.timeline["last_day"] = today
 
-  def done(self):
+  def done(self) -> Tuple[str, str]:
     if self.current_activity() is None:
       raise TimelineError("No ongoing activity to finish.")
 
@@ -83,33 +87,48 @@ class Timeline:
     # add a copy of this activity to today's entry on the timeline.
     if last_day != today:
       finished_activity = {**current_activity, "previous": True}
-      self.timeline[today] = [finished_activity]
+      self.timeline["timeline"][today] = [finished_activity]
 
     return (elapsed_time_phrase(current_activity["start"]),
-            current_activity["id"])
+            current_activity["name"])
 
-  def current_activity(self):
+  def current_activity(self) -> Optional[Dict[str, str]]:
     if "last_day" in self.timeline:
       return self.timeline["timeline"][self.timeline["last_day"]][-1]
+    return None
 
-  def print_status(self):
-    print(f"The current user is '{self.username}'")
+  def get_activity_id(self, activity_name: str) -> str:
+    try:
+      activities = self.timeline["activities"]
+      return str(activity_utils.get_activity_id(activities, activity_name))
+    except ValueError as error:
+      raise TimelineError(error)
+
+  def print_status(self) -> None:
+    print(f"Status for '{self.username}':")
     activity = self.current_activity()
     if activity is not None:
-      print(f"You are currently doing '{activity['id']}'")
+      category = activity_utils.find_activity(self.timeline["activities"],
+                                          activity["name"])
+      if category is None:
+        raise TimelineError("Malformed timeline file. Category name "
+                            f"'{activity['name']}' does not have corresponding "
+                            "entry inside 'activities' dictionary.")
+      path = category.path
+      print(f"You are currently doing '{'/'.join(path)}/{activity['name']}'")
       phrase = elapsed_time_phrase(activity["start"])
       print(f"You have been doing so for {phrase}.")
     else:
       print(f"There is no ongoing activity.")
 
-  def save_timeline_to_file(self):
+  def save_timeline_to_file(self) -> None:
     with open(Timeline.resource_filename("timelines",
                                          f"{self.username}.hjson"),
               "w") as timeline:
-      return timeline.write(hjson.dumps(self.timeline))
+      timeline.write(hjson.dumps(self.timeline))
 
   @staticmethod
-  def new_timeline(username):
+  def new_timeline(username) -> str:
     user_timeline = Timeline.resource_filename("timelines",
                                                f"{username}.hjson")
     if os.path.exists(user_timeline):
@@ -120,39 +139,49 @@ class Timeline:
     return user_timeline
 
   @staticmethod
-  def blank_timeline():
+  def blank_timeline() -> Dict:
     with open(Timeline.resource_filename("blank_timeline.hjson")) as blank:
       return hjson.loads(blank.read())
 
   @staticmethod
-  def resource_filename(*files):
+  def resource_filename(*files) -> str:
     return pkg_resources.resource_filename("lifelib",
                                            os.path.join("data", *files))
 
   @staticmethod
-  def load_timeline(username):
-    with open(Timeline.resource_filename("timelines",
-                                         f"{username}.hjson")) as timeline:
-      return hjson.loads(timeline.read())
+  def load_timeline(username) -> Dict:
+    try:
+      with open(Timeline.resource_filename("timelines",
+                                           f"{username}.hjson")) as timeline:
+        return hjson.loads(timeline.read())
+    except FileNotFoundError:
+      raise TimelineError(f"User '{username}' does not exist.")
 
   @staticmethod
   def default_user():
     return Timeline.current_state["default_user"]
 
   @staticmethod
-  def set_default_user(username):
-    Timeline.current_state["default_user"] = username
-    Timeline.save_current_state_to_file()
+  def set_default_user(username) -> None:
+    user_timeline = Timeline.resource_filename("timelines",
+                                               f"{username}.hjson")
+    if os.path.exists(user_timeline):
+      Timeline.current_state["default_user"] = username
+      Timeline.save_current_state_to_file()
+    else:
+      raise TimelineError(f"User '{username}' does not exist. "
+                          "Create this user with the command"
+                          f"\n\n    life --new '{username}'")
 
   @staticmethod
-  def get_current_state_from_file():
+  def get_current_state_from_file() -> Dict[str, str]:
     with open(Timeline.resource_filename("state.hjson")) as state:
       return hjson.loads(state.read())
 
   @staticmethod
-  def save_current_state_to_file():
+  def save_current_state_to_file() -> None:
     with open(Timeline.resource_filename("state.hjson"), "w") as state:
-      return state.write(hjson.dumps(Timeline.current_state))
+      state.write(hjson.dumps(Timeline.current_state))
 
 
 Timeline.current_state = Timeline.get_current_state_from_file()

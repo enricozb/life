@@ -1,1 +1,1 @@
-# Life - Analyze your experiences
+# Life

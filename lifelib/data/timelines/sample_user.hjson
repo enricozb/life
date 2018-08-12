@@ -1,4 +1,5 @@
 {
   timeline: {}
   activities: {}
+  last_day: null
 }

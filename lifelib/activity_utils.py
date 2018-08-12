@@ -1,7 +1,5 @@
-import uuid
-
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 
 @dataclass
@@ -9,122 +7,151 @@ class Activity:
   name: str
   uuid: str
   is_leaf: bool
-  path: list
+  path: Tuple[str, ...]
 
 
-def create_new_activity(activities: Dict[str, Any],
-                        activity_name: str) -> Optional[str]:
-  def traverse(activity_node: Dict[str, Any], path: List[str] = None) -> str:
-    if path is None:
-      path = []
+class UserExitError(RuntimeError):
+  pass
 
+
+def new_uuid() -> str:
+  import uuid
+  return str(uuid.uuid4())
+
+
+def create_new_activity(activity_node: Dict[str, Any],
+                        activity_name: str) -> Activity:
+  def create_new_activity_(activity_node: Dict[str, Any],
+                           path: Tuple[str, ...] = ()):
     if path:
-      print(f"Current category: {'.'.join(path)}")
+      print(f"Current activity path: {'.'.join(path)}")
     else:
-      print(f"Current category: [root of category tree]")
+      print(f"Current activity path: [root of activity tree]")
 
-    nodes = []
-    # TODO: have an option for creating new sub-categories if none of the
-    # 1-n work.
-    for i, (name, (sub_uuid, sub_activities)) in enumerate(activity_node.items()):
+    nodes = list(activity_node.items())
+    for i, (name, _) in enumerate(nodes):
       print(f"  ({i+1}) {name}")
-      nodes.append((name, sub_uuid, sub_activities))
 
-    category = input("Which category? (press enter to create one here) ")
-    if category:
-      if category.isdigit():
-        name, sub_uuid, sub_activities = nodes[int(category) - 1]
-      elif category:
-        name = category.lower()
-        sub_uuid, sub_activities = activity_node[name]
+    choice = input("Which sub-activity? (press enter to create a it here) ")
+    if choice:
+      if choice.isdigit():
+        choice_name, (choice_uuid, sub_activities) = nodes[int(choice) - 1]
+      else:
+        choice_name = choice.lower()
+        choice_uuid, sub_activities = activity_node[choice_name]
 
       if sub_activities is None:
-        uid = str(uuid.uuid4())
-        activity_node[name] = (sub_uuid, {activity_name: (uid, None)})
-        return uid
+        # the chosen sub-activity is a leaf, so we have to give it
+        # a new child node. So, we create a uuid for the activity we are
+        # creating and add it to the chosen sub-activity
+        new_activity_uuid = new_uuid()
+        activity_node[choice_name] = (
+            choice_uuid, {activity_name: (new_activity_uuid, None)})
+        return Activity(name=activity_name,
+                        uuid=new_activity_uuid,
+                        is_leaf=False,
+                        path=path)
       else:
-        return traverse(sub_activities, path=[*path, name])
-
+        # the chosen sub-activity is not a leaf, so keep traversing
+        return create_new_activity_(sub_activities, path=(*path, choice_name))
     else:
-      uid = str(uuid.uuid4())
-      activity_node[activity_name] = (uid, None)
-      return uid
+      # creating the sub-activity here
+      new_activity_uuid = new_uuid()
+      activity_node[activity_name] = (new_activity_uuid, None)
+      return Activity(name=activity_name,
+                      uuid=new_activity_uuid,
+                      is_leaf=False,
+                      path=path)
 
-  create = input(f"The activity '{activity_name}' does not exist. "
+  choice = input(f"The activity '{activity_name}' does not exist. "
                  "Would you like to create it? (y/n) ")
-  while create not in {'y', 'n'}:
-    create = input(f"Invalid option '{create}'. Please use (y/n) ")
+  while choice not in {'y', 'n'}:
+    choice = input(f"Invalid option '{choice}'. Please use (y/n) ")
 
-  if create.lower() == 'y':
-    print("Category selection:")
-    return traverse(activities)
+  if choice == 'y':
+    print("Activity selection:")
+    return create_new_activity_(activity_node)
   else:
-    return None
+    raise UserExitError("User cancelled activity creation.")
 
 
-def find_activity(activities: Dict, activity_name: str,
-                  path: List[Activity]=None) -> Optional[Activity]:
-  if path is None:
-    path = []
+def find_activity(activities: Dict,
+                  name: Optional[str] = None,
+                  uuid: Optional[str] = None,
+                  path: Tuple[str, ...] = ()) -> Optional[Activity]:
+  def create_compare_func(name: Optional[str],
+                          uuid: Optional[str]) -> Callable[[str, str], bool]:
+    if (name and uuid) or ({name, uuid} == {None}):
+      raise ValueError(
+          "find_activity: must pass exactly one of 'name' or 'uuid'.")
+    if name:
+      return lambda name_, _: name_ == name
+    return lambda _, uuid_: uuid_ == uuid
 
-  for name, (uuid, sub_activities) in activities.items():
+  # TODO handle activities with the same name
+  is_key = create_compare_func(name, uuid)
+
+  for test_name, (test_uuid, sub_activities) in activities.items():
     is_leaf = sub_activities is None
-    if name == activity_name.lower():
-      return Activity(name, uuid, is_leaf, path)
+    if is_key(test_name, test_uuid):
+      return Activity(test_name, test_uuid, is_leaf, path)
 
     if not is_leaf:
-      found = find_activity(sub_activities, activity_name, [*path, name])
+      found = find_activity(sub_activities, name, uuid, (*path, test_name))
       if found is not None:
         return found
   return None
 
 
-def get_activity_id(categories: Dict[str, Any],
-                    category_name: str) -> Optional[str]:
-  category_name = category_name.lower()
-  category_path = category_name.split('/')
-  if len(category_path) == 1:
-    cat = find_activity(categories, category_name)
+def get_activity_id(activities: Dict[str, Any],
+                    activity_name: str) -> str:
+  activity_name = activity_name.lower()
+  path = activity_name.split('/')
 
-    if cat is None:
-      return create_new_activity(categories, category_name)
+  if len(path) == 1:
+    activity = find_activity(activities, activity_name)
+
+    if activity is None:
+      return create_new_activity(activities, activity_name).uuid
     else:
-      return cat.uuid
+      return activity.uuid
   else:
-    # if category_name is in the form cat1/cat2/cat3/
-    # create it & it's sub-categories, ala mkdir -p
-    curr_categories = categories
-    for i, cat_name in enumerate(category_path):
-      if cat_name not in curr_categories:
-        # we are not at a leaf, but none of the sub-categories match
-        if category_path[i:] == []:
-          raise ValueError(f"The category '{category_name}' already exists.")
-        curr_categories[cat_name] = (
-            str(uuid.uuid4()), create_categories(category_path[i + 1:]))
+    # if activity_name is in the form cat1/cat2/cat3/
+    # create it & it's sub-activities, ala mkdir -p
+    activity_node = activities
+    for i, name in enumerate(path):
+      if name not in activity_node:
+        # we're not a leaf, but none of the sub-activities match
+        # make the rest of the path
+        if path[i:] == []:
+          raise ValueError(f"The activity '{activity_name}' already exists.")
+        activity_node[name] = (new_uuid(), create_activity_path(path[i + 1:]))
         break
+
       else:
-        # we found a sub-category that matches
-        uid, sub_categories = curr_categories[cat_name]
+        # we found a sub-activity that matches
+        uuid, sub_activities = activities[name]
 
-        if sub_categories is None:
-          print('leaf')
+        if sub_activities is None:
           # we are at a leaf, but arrived here by following the path
-          if category_path[i:] == []:
-            raise ValueError(f"The category '{category_name}' already exists.")
-          curr_categories[cat_name] = (uid,
-                                       create_categories(category_path[i + 1:]))
+          # make the rest of the path
+          if path[i:] == []:
+            raise ValueError(f"The activity '{activity_name}' already exists.")
+          activity_node[name] = (uuid, create_activity_path(path[i + 1:]))
           break
+
         else:
-          curr_categories = sub_categories
+          # we are not at a leaf, keep looking
+          activity_node = sub_activities
 
-  category = find_activity(categories, category_path[-1])
-  if category is None:
-    raise RuntimeError("Added new category but it doesn't exist.")
-  return category.uuid
+  activity = find_activity(activities, path[-1])
+  if activity is None:
+    raise RuntimeError("Added new activity but it doesn't exist.")
+  return activity.uuid
 
 
-def create_categories(category_path: List[str]) -> Optional[Dict[str, Any]]:
-  curr_cat: Optional[Dict] = None
-  for cat in category_path[::-1]:
-    curr_cat = {cat: (str(uuid.uuid4()), curr_cat)}
-  return curr_cat
+def create_activity_path(activity_path: List[str]) -> Optional[Dict[str, Any]]:
+  activity_node: Optional[Dict] = None
+  for name in reversed(activity_path):
+    activity_node = {name: (new_uuid(), activity_node)}
+  return activity_node
